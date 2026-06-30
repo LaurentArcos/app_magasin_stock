@@ -1,0 +1,27 @@
+{
+  "name": "Magasin — Stock",
+  "short_name": "Stock",
+  "description": "Consultation et gestion du stock magasin, avec mode hors ligne.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef2f7",
+  "theme_color": "#4f46e5",
+  "lang": "fr",
+  "dir": "auto",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
