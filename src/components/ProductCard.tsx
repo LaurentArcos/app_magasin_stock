@@ -13,12 +13,42 @@ import {
 } from "@/lib/store";
 import type { AirtableRecord, ProductFields } from "@/lib/types";
 
-const INFO_FIELDS: (keyof ProductFields)[] = [
+type EditType = "text" | "number" | "currency" | "longtext" | "date";
+
+// Tous les champs modifiables (nom de colonne Airtable + type de saisie).
+const EDITABLE: { key: keyof ProductFields; type: EditType }[] = [
+  { key: "Quantité", type: "number" },
+  { key: "Prix Unitaire", type: "currency" },
+  { key: "Produit", type: "text" },
+  { key: "Produit1", type: "text" },
+  { key: "Produit2", type: "text" },
+  { key: "Référence", type: "text" },
+  { key: "Fournisseur", type: "text" },
+  { key: "Chez qui", type: "text" },
+  { key: "Taille", type: "number" },
+  { key: "Taille maille", type: "text" },
+  { key: "Couleur maille", type: "text" },
+  { key: "Couleur ruban", type: "text" },
+  { key: "Couleur curseur", type: "text" },
+  { key: "Couleur tirette", type: "text" },
+  { key: "Tirette/Curseur", type: "text" },
+  { key: "Double curseur ?", type: "text" },
+  { key: "Close ou openend", type: "text" },
+  { key: "Coated", type: "text" },
+  { key: "Reverse ?", type: "text" },
+  { key: "date d'arrivée", type: "date" },
+  { key: "Commentaire", type: "longtext" },
+];
+
+// Ordre d'affichage de la grille détaillée (hors Quantité / Prix / Commentaire,
+// qui ont leur propre zone). Les 3 derniers sont calculés = lecture seule.
+const DETAIL_ORDER: (keyof ProductFields)[] = [
+  "Produit",
+  "Produit1",
+  "Produit2",
   "Référence",
   "Fournisseur",
   "Chez qui",
-  "Produit1",
-  "Produit2",
   "Taille",
   "Taille maille",
   "Couleur maille",
@@ -31,32 +61,82 @@ const INFO_FIELDS: (keyof ProductFields)[] = [
   "Coated",
   "Reverse ?",
   "date d'arrivée",
+  "Total",
+  "Principal",
+  "updated_at",
 ];
+
+const CURRENCY = new Set<keyof ProductFields>(["Prix Unitaire", "Total"]);
+
+// Formate une date/heure en heure de Paris. Ex: 30/06/2026 15:19
+function formatDateTime(v: unknown, lang: string): string {
+  if (v === undefined || v === null || v === "") return "—";
+  const d = new Date(String(v));
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toLocaleString(lang === "ar" ? "ar" : "fr-FR", {
+    timeZone: "Europe/Paris",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+// Formate une date seule. Ex: 30/06/2026
+function formatDate(v: unknown, lang: string): string {
+  if (v === undefined || v === null || v === "") return "—";
+  const d = new Date(String(v));
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toLocaleDateString(lang === "ar" ? "ar" : "fr-FR", {
+    timeZone: "Europe/Paris",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function typeOf(key: keyof ProductFields): EditType | undefined {
+  return EDITABLE.find((e) => e.key === key)?.type;
+}
 
 function formatValue(v: unknown): string {
   if (v === undefined || v === null || v === "") return "—";
   return String(v);
 }
 
-// Formate un prix : toujours 2 décimales + signe €. Ex: 12,50 €
-// Gère les valeurs numériques comme les chaînes ("12,50", "1 234.5", "12€"...).
-// En cas de valeur non interprétable, on affiche la valeur brute plutôt que rien.
+// Prix : toujours 2 décimales + €. Tolère les chaînes ("12,50", "12€"...).
 function formatPrice(v: unknown): string {
   if (v === undefined || v === null || v === "") return "—";
-
   let n: number;
   if (typeof v === "number") {
     n = v;
   } else {
     const cleaned = String(v)
-      .replace(/[^\d.,-]/g, "") // retire €, espaces, lettres...
+      .replace(/[^\d.,-]/g, "")
       .replace(/\s/g, "")
-      .replace(",", "."); // virgule décimale -> point
+      .replace(",", ".");
     n = Number(cleaned);
   }
-
-  if (Number.isNaN(n)) return formatValue(v); // fallback : ne rien masquer
+  if (Number.isNaN(n)) return formatValue(v);
   return `${n.toFixed(2).replace(".", ",")} €`;
+}
+
+// Valeur initiale (chaîne) d'un champ pour le formulaire.
+function initValue(v: unknown, type: EditType): string {
+  if (v === undefined || v === null) return "";
+  if (type === "date") return String(v).slice(0, 10);
+  return String(v);
+}
+
+// Conversion chaîne -> valeur typée pour Airtable.
+function toTyped(value: string, type: EditType): unknown {
+  if (value === "") return null;
+  if (type === "number" || type === "currency") {
+    const n = Number(value);
+    return Number.isNaN(n) ? null : n;
+  }
+  return value;
 }
 
 export default function ProductCard({
@@ -68,65 +148,69 @@ export default function ProductCard({
   onBack: () => void;
   onUpdated: (r: AirtableRecord) => void;
 }) {
-  const { t, dir } = useI18n();
+  const { t, dir, lang } = useI18n();
   const { isAdmin, adminCode } = useAuth();
   const { online, refresh } = useOffline();
   const f = record.fields;
 
-  const [quantite, setQuantite] = useState<string>(
-    f["Quantité"] !== undefined ? String(f["Quantité"]) : "0"
-  );
-  const [prix, setPrix] = useState<string>(
-    f["Prix Unitaire"] !== undefined ? String(f["Prix Unitaire"]) : ""
-  );
+  // État du formulaire : une chaîne par champ modifiable.
+  const [values, setValues] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const { key, type } of EDITABLE) {
+      init[key as string] = initValue(f[key], type);
+    }
+    return init;
+  });
   const [status, setStatus] = useState<
     "idle" | "saving" | "saved" | "queued" | "error"
   >("idle");
+
+  const setValue = (key: keyof ProductFields, val: string) =>
+    setValues((prev) => ({ ...prev, [key as string]: val }));
 
   const name = f.Produit || f.Produit1 || f["Référence"] || "—";
   const photo = f.Photo && f.Photo.length > 0 ? f.Photo[0] : null;
   const photoUrl = photo?.thumbnails?.large?.url ?? photo?.url ?? null;
 
-  const dirty =
-    quantite !== String(f["Quantité"] ?? 0) ||
-    (isAdmin && prix !== String(f["Prix Unitaire"] ?? ""));
+  // Champs réellement modifiés par rapport à l'original.
+  function collectChanges(): Record<string, unknown> {
+    const changed: Record<string, unknown> = {};
+    for (const { key, type } of EDITABLE) {
+      const cur = values[key as string] ?? "";
+      const orig = initValue(f[key], type);
+      if (cur !== orig) changed[key as string] = toTyped(cur, type);
+    }
+    return changed;
+  }
+
+  const dirty = Object.keys(collectChanges()).length > 0;
 
   async function save() {
+    const changed = collectChanges();
+    if (Object.keys(changed).length === 0) return;
+
     setStatus("saving");
+    // 1) Mise à jour optimiste du cache local.
+    await applyLocalFields(record.id, changed);
 
-    const payload: {
-      quantite?: number;
-      prixUnitaire?: number;
-    } = {};
-    if (quantite !== String(f["Quantité"] ?? 0)) {
-      payload.quantite = Number(quantite);
-    }
-    if (isAdmin && prix !== String(f["Prix Unitaire"] ?? "")) {
-      payload.prixUnitaire = Number(prix);
-    }
-
-    // 1) Mise à jour optimiste du cache local (visible immédiatement).
-    await applyLocalFields(record.id, payload);
-
-    // 2) Si en ligne, on tente l'envoi direct.
+    // 2) En ligne : envoi direct.
     if (online) {
       try {
-        const rec = await sendFields(record.id, { ...payload, adminCode });
+        const rec = await sendFields(record.id, { fields: changed, adminCode });
         onUpdated(rec);
         setStatus("saved");
         setTimeout(() => setStatus("idle"), 2000);
         return;
       } catch {
-        // échec réseau -> on bascule en file d'attente
+        /* bascule en file d'attente */
       }
     }
 
-    // 3) Hors ligne (ou échec) : on met en file d'attente.
+    // 3) Hors ligne (ou échec) : file d'attente.
     await enqueue({
       recordId: record.id,
       kind: "fields",
-      quantite: payload.quantite,
-      prixUnitaire: payload.prixUnitaire,
+      fields: changed,
       adminCode,
       ts: Date.now(),
     });
@@ -138,8 +222,14 @@ export default function ProductCard({
   }
 
   function step(delta: number) {
-    setQuantite((cur) => String(Math.max(0, (Number(cur) || 0) + delta)));
+    setValues((prev) => {
+      const cur = Number(prev["Quantité"]) || 0;
+      return { ...prev, ["Quantité"]: String(Math.max(0, cur + delta)) };
+    });
   }
+
+  const inputClass =
+    "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-100";
 
   return (
     <div className="space-y-4">
@@ -186,11 +276,9 @@ export default function ProductCard({
               </svg>
             </div>
           )}
-          {/* Boutons changer la photo (coin haut) */}
           <div className="absolute end-3 top-3">
             <PhotoUploader recordId={record.id} onUpdated={onUpdated} />
           </div>
-
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-4">
             <h2 className="text-xl font-bold text-white drop-shadow-sm sm:text-2xl">
               {name}
@@ -201,7 +289,7 @@ export default function ProductCard({
           </div>
         </div>
 
-        {/* Édition quantité + prix */}
+        {/* Quantité + Prix (zone principale) */}
         <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 sm:p-5">
           {/* Quantité */}
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -220,8 +308,8 @@ export default function ProductCard({
                 type="number"
                 min={0}
                 inputMode="numeric"
-                value={quantite}
-                onChange={(e) => setQuantite(e.target.value)}
+                value={values["Quantité"] ?? ""}
+                onChange={(e) => setValue("Quantité", e.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-center text-xl font-bold outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-100"
               />
               <button
@@ -258,8 +346,8 @@ export default function ProductCard({
                   min={0}
                   step="0.01"
                   inputMode="decimal"
-                  value={prix}
-                  onChange={(e) => setPrix(e.target.value)}
+                  value={values["Prix Unitaire"] ?? ""}
+                  onChange={(e) => setValue("Prix Unitaire", e.target.value)}
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pe-8 text-center text-xl font-bold outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-100"
                 />
                 <span className="pointer-events-none absolute inset-y-0 end-3 flex items-center text-lg font-bold text-slate-400">
@@ -274,45 +362,77 @@ export default function ProductCard({
           </div>
         </div>
 
-        {/* Infos détaillées */}
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-0 px-4 pb-2 sm:grid-cols-2 sm:px-5">
-          {INFO_FIELDS.map((key) => (
-            <div
-              key={String(key)}
-              className="flex items-center justify-between gap-3 border-b border-slate-100 py-2.5"
-            >
-              <dt className="text-sm text-slate-500">
-                {t(`field_${String(key)}`)}
-              </dt>
-              <dd className="text-end text-sm font-medium text-slate-800">
-                {formatValue(f[key])}
-              </dd>
-            </div>
-          ))}
-          {f.Total !== undefined && (
-            <div className="flex items-center justify-between gap-3 border-b border-slate-100 py-2.5">
-              <dt className="text-sm text-slate-500">{t("field_Total")}</dt>
-              <dd className="text-end text-sm font-semibold text-slate-900">
-                {formatPrice(f.Total)}
-              </dd>
-            </div>
-          )}
-        </dl>
+        {/* Grille détaillée : tous les autres champs (toujours affichés) */}
+        <div className="grid grid-cols-1 gap-x-6 gap-y-0 px-4 pb-2 sm:grid-cols-2 sm:px-5">
+          {DETAIL_ORDER.map((key) => {
+            const type = typeOf(key);
+            const editable = isAdmin && type !== undefined;
+            const label = t(`field_${String(key)}`);
+            const inputType =
+              type === "date"
+                ? "date"
+                : type === "number" || type === "currency"
+                ? "number"
+                : "text";
 
-        {/* Commentaire */}
-        {f.Commentaire && (
-          <div className="border-t border-slate-100 p-4 sm:p-5">
-            <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              {t("field_Commentaire")}
-            </h3>
+            return (
+              <div key={String(key)} className="border-b border-slate-100 py-2.5">
+                {editable ? (
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-500">
+                      {label}
+                    </label>
+                    <input
+                      type={inputType}
+                      min={
+                        type === "number" || type === "currency" ? 0 : undefined
+                      }
+                      step={type === "currency" ? "0.01" : undefined}
+                      value={values[key as string] ?? ""}
+                      onChange={(e) => setValue(key, e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-sm text-slate-500">{label}</dt>
+                    <dd className="text-end text-sm font-medium text-slate-800">
+                      {CURRENCY.has(key)
+                        ? formatPrice(f[key])
+                        : key === "updated_at"
+                        ? formatDateTime(f[key], lang)
+                        : key === "date d'arrivée"
+                        ? formatDate(f[key], lang)
+                        : formatValue(f[key])}
+                    </dd>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Commentaire (toujours affiché, éditable en admin) */}
+        <div className="border-t border-slate-100 p-4 sm:p-5">
+          <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            {t("field_Commentaire")}
+          </h3>
+          {isAdmin ? (
+            <textarea
+              rows={3}
+              value={values["Commentaire"] ?? ""}
+              onChange={(e) => setValue("Commentaire", e.target.value)}
+              className={`${inputClass} resize-y`}
+            />
+          ) : (
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-              {f.Commentaire}
+              {f.Commentaire ? f.Commentaire : "—"}
             </p>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* Barre d'enregistrement collante (mobile-first) */}
+      {/* Barre d'enregistrement collante */}
       <div className="sticky bottom-0 z-10 -mx-4 border-t border-slate-200 bg-white/85 px-4 py-3 backdrop-blur-md">
         <div className="mx-auto flex max-w-3xl items-center gap-3">
           <button

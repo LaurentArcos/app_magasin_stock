@@ -4,6 +4,9 @@ import type { ProductFields } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
+// Champs calculés / non modifiables via l'API records.
+const READONLY_FIELDS = new Set(["Total", "Principal", "updated_at", "Photo"]);
+
 // GET /api/products/:id  -> fiche complète d'un produit
 export async function GET(
   _req: NextRequest,
@@ -19,48 +22,60 @@ export async function GET(
 }
 
 // PATCH /api/products/:id
-// Corps attendu : { quantite?: number, prixUnitaire?: number }
-// La quantité est modifiable par tout le monde.
-// Le prix unitaire requiert le code admin via l'en-tête "x-admin-code".
+// Corps : { fields: { "<Nom colonne Airtable>": valeur, ... } }
+// - La quantité est modifiable par tout le monde.
+// - Tous les autres champs nécessitent le code admin (en-tête "x-admin-code").
+// - Les champs calculés (Total, N°, date de modif, Photo) sont ignorés.
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  let body: { quantite?: unknown; prixUnitaire?: unknown };
+  let body: { fields?: unknown };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Corps JSON invalide" }, { status: 400 });
   }
 
-  const fields: Partial<ProductFields> = {};
+  const incoming =
+    body.fields && typeof body.fields === "object"
+      ? (body.fields as Record<string, unknown>)
+      : {};
 
-  // Quantité
-  if (body.quantite !== undefined && body.quantite !== null) {
-    const qte = Number(body.quantite);
-    if (Number.isNaN(qte) || qte < 0) {
-      return NextResponse.json(
-        { error: "Quantité invalide" },
-        { status: 400 }
-      );
-    }
-    fields["Quantité"] = qte;
-  }
+  const adminCode = req.headers.get("x-admin-code");
+  const isAdmin = !!process.env.ADMIN_CODE && adminCode === process.env.ADMIN_CODE;
 
-  // Prix unitaire -> nécessite le code admin
-  if (body.prixUnitaire !== undefined && body.prixUnitaire !== null) {
-    const adminCode = req.headers.get("x-admin-code");
-    if (!process.env.ADMIN_CODE || adminCode !== process.env.ADMIN_CODE) {
+  const fields: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(incoming)) {
+    if (READONLY_FIELDS.has(key)) continue; // non modifiable
+
+    // Sans code admin : seule la quantité est autorisée.
+    if (!isAdmin && key !== "Quantité") {
       return NextResponse.json(
-        { error: "Code administrateur requis ou invalide pour modifier le prix" },
+        { error: `Code administrateur requis pour modifier « ${key} »` },
         { status: 403 }
       );
     }
-    const prix = Number(body.prixUnitaire);
-    if (Number.isNaN(prix) || prix < 0) {
-      return NextResponse.json({ error: "Prix invalide" }, { status: 400 });
+
+    // Validation des champs numériques connus.
+    if (key === "Quantité" || key === "Prix Unitaire" || key === "Taille") {
+      if (value === null || value === "") {
+        fields[key] = null;
+      } else {
+        const n = Number(value);
+        if (Number.isNaN(n) || n < 0) {
+          return NextResponse.json(
+            { error: `Valeur invalide pour « ${key} »` },
+            { status: 400 }
+          );
+        }
+        fields[key] = n;
+      }
+      continue;
     }
-    fields["Prix Unitaire"] = prix;
+
+    fields[key] = value === "" ? null : value;
   }
 
   if (Object.keys(fields).length === 0) {
@@ -71,7 +86,7 @@ export async function PATCH(
   }
 
   try {
-    const record = await updateProduct(params.id, fields);
+    const record = await updateProduct(params.id, fields as Partial<ProductFields>);
     return NextResponse.json({ record });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erreur inconnue";

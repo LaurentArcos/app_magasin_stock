@@ -36,6 +36,8 @@ export const translations: Record<Lang, Record<string, string>> = {
     syncing: "Synchronisation...",
     sync_now: "Synchroniser",
     synced_ok: "À jour",
+    sync_done: "Synchronisé ✓",
+    sync_failed: "Échec de la synchro — réessaie",
     last_sync: "Dernière synchro",
     never_synced: "Aucune donnée locale — connecte-toi une fois pour synchroniser.",
 
@@ -57,6 +59,7 @@ export const translations: Record<Lang, Record<string, string>> = {
     field_Produit1: "Produit 1",
     field_Produit2: "Produit 2",
     field_Total: "Total",
+    field_Principal: "N°",
     field_Taille: "Taille",
     "field_Taille maille": "Taille maille",
     "field_Couleur maille": "Couleur maille",
@@ -103,6 +106,8 @@ export const translations: Record<Lang, Record<string, string>> = {
     syncing: "جارٍ المزامنة...",
     sync_now: "مزامنة",
     synced_ok: "محدّث",
+    sync_done: "تمت المزامنة ✓",
+    sync_failed: "فشلت المزامنة — أعد المحاولة",
     last_sync: "آخر مزامنة",
     never_synced: "لا توجد بيانات محلية — اتصل مرة واحدة للمزامنة.",
 
@@ -124,6 +129,7 @@ export const translations: Record<Lang, Record<string, string>> = {
     field_Produit1: "المنتج 1",
     field_Produit2: "المنتج 2",
     field_Total: "المجموع",
+    field_Principal: "الرقم",
     field_Taille: "المقاس",
     "field_Taille maille": "مقاس السن",
     "field_Couleur maille": "لون السن",

@@ -3,15 +3,14 @@
 // - file d'attente "outbox" des modifications faites hors ligne
 
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-import type { AirtableRecord } from "./types";
+import type { AirtableRecord, ProductFields } from "./types";
 
 export interface OutboxItem {
   localId?: number;
   recordId: string;
   kind: "fields" | "photo";
-  // modif de champs
-  quantite?: number;
-  prixUnitaire?: number;
+  // modif de champs : noms de colonnes Airtable -> valeurs
+  fields?: Record<string, unknown>;
   adminCode?: string | null;
   // modif de photo
   file?: string; // base64
@@ -135,18 +134,14 @@ export async function searchProductsLocal(
 
 export async function applyLocalFields(
   id: string,
-  fields: { quantite?: number; prixUnitaire?: number }
+  fields: Record<string, unknown>
 ) {
   const current = await getCachedProduct(id);
   if (!current) return;
   const updated: AirtableRecord = {
     ...current,
-    fields: { ...current.fields },
+    fields: { ...current.fields, ...(fields as Partial<ProductFields>) },
   };
-  if (fields.quantite !== undefined) updated.fields["Quantité"] = fields.quantite;
-  if (fields.prixUnitaire !== undefined) {
-    updated.fields["Prix Unitaire"] = fields.prixUnitaire;
-  }
   await upsertCachedProduct(updated);
 }
 
@@ -197,19 +192,15 @@ async function removeOutbox(localId: number) {
 
 export async function sendFields(
   recordId: string,
-  payload: { quantite?: number; prixUnitaire?: number; adminCode?: string | null }
+  payload: { fields: Record<string, unknown>; adminCode?: string | null }
 ): Promise<AirtableRecord> {
-  const body: { quantite?: number; prixUnitaire?: number } = {};
-  if (payload.quantite !== undefined) body.quantite = payload.quantite;
-  if (payload.prixUnitaire !== undefined) body.prixUnitaire = payload.prixUnitaire;
-
   const res = await fetch(`/api/products/${recordId}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
       ...(payload.adminCode ? { "x-admin-code": payload.adminCode } : {}),
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ fields: payload.fields }),
   });
   if (!res.ok) throw new Error("send fields failed");
   const data = (await res.json()) as { record: AirtableRecord };
@@ -244,8 +235,7 @@ export async function flushOutbox(): Promise<number> {
     try {
       if (item.kind === "fields") {
         await sendFields(item.recordId, {
-          quantite: item.quantite,
-          prixUnitaire: item.prixUnitaire,
+          fields: item.fields ?? {},
           adminCode: item.adminCode,
         });
       } else if (item.kind === "photo" && item.file && item.contentType) {

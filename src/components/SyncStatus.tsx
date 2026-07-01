@@ -15,7 +15,8 @@ function timeAgo(ts: number, lang: string): string {
 
 export default function SyncStatus() {
   const { t, lang } = useI18n();
-  const { online, syncing, pending, lastSync, syncNow } = useOffline();
+  const { online, syncing, pending, lastSync, syncError, justSynced, syncNow } =
+    useOffline();
 
   return (
     <div className="mb-3 space-y-2">
@@ -49,6 +50,14 @@ export default function SyncStatus() {
               <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600" />
               {t("syncing")}
             </>
+          ) : syncError ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 font-medium text-red-700">
+              {t("sync_failed")}
+            </span>
+          ) : justSynced ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700">
+              {t("sync_done")}
+            </span>
           ) : pending > 0 ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700">
               {pending}{" "}

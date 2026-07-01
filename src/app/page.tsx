@@ -48,7 +48,7 @@ export default function Home() {
     <div className="min-h-screen">
       {/* Header collant */}
       <header className="sticky top-0 z-20 border-b border-white/60 bg-white/70 backdrop-blur-md">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-4 py-3">
+        <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-2 px-4 py-3">
           <div className="flex items-center gap-2">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-sm">
               <svg
@@ -69,19 +69,19 @@ export default function Home() {
               {t("app_title")}
             </h1>
           </div>
-          <LanguageToggle />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <AdminLogin />
+            <LanguageToggle />
+          </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-3xl px-4 pb-24 pt-4">
         <SyncStatus />
 
-        {/* Barre de recherche + admin */}
+        {/* Barre de recherche */}
         <div className="mb-5">
           <SearchBar onSearch={search} loading={loading} />
-          <div className="mt-3 flex justify-end">
-            <AdminLogin />
-          </div>
         </div>
 
         {error && (

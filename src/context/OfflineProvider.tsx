@@ -19,6 +19,8 @@ interface OfflineContextValue {
   syncing: boolean;
   pending: number; // nombre de modifs en attente
   lastSync: number | null;
+  syncError: boolean; // vrai si la dernière synchro a échoué
+  justSynced: boolean; // vrai brièvement après une synchro réussie
   refresh: () => Promise<void>;
   syncNow: () => Promise<void>;
 }
@@ -30,6 +32,8 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
   const [syncing, setSyncing] = useState(false);
   const [pending, setPending] = useState(0);
   const [lastSync, setLastSync] = useState<number | null>(null);
+  const [syncError, setSyncError] = useState(false);
+  const [justSynced, setJustSynced] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -43,11 +47,14 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
   const syncNow = useCallback(async () => {
     if (!navigator.onLine) return;
     setSyncing(true);
+    setSyncError(false);
     try {
       await flushOutbox(); // envoie les modifs en attente
       await syncDown(); // récupère la dernière version
+      setJustSynced(true);
+      setTimeout(() => setJustSynced(false), 2500);
     } catch {
-      /* on réessaiera */
+      setSyncError(true); // échec visible pour l'utilisateur
     } finally {
       setSyncing(false);
       await refresh();
@@ -75,7 +82,16 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <OfflineContext.Provider
-      value={{ online, syncing, pending, lastSync, refresh, syncNow }}
+      value={{
+        online,
+        syncing,
+        pending,
+        lastSync,
+        syncError,
+        justSynced,
+        refresh,
+        syncNow,
+      }}
     >
       {children}
     </OfflineContext.Provider>
