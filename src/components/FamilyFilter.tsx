@@ -1,13 +1,14 @@
 "use client";
 
 import { useI18n } from "@/i18n/I18nProvider";
+import { translateProduct } from "@/lib/productNames";
 
 export interface Family {
   name: string;
   count: number;
 }
 
-// Pluriel d'affichage : on pluralise le mot principal (le premier),
+// Pluriel d'affichage (français) : on pluralise le mot principal (le premier),
 // sauf s'il se termine déjà par s, x ou z. Ex: "Bouton à coudre" -> "Boutons à coudre".
 function pluralize(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -15,6 +16,12 @@ function pluralize(name: string): string {
   const head = parts[0];
   if (!/[sxz]$/i.test(head)) parts[0] = head + "s";
   return parts.join(" ");
+}
+
+// Libellé d'une famille : arabe traduit si dispo, sinon pluriel français.
+function familyLabel(name: string, lang: string): string {
+  if (lang === "ar") return translateProduct(name, "ar");
+  return pluralize(name);
 }
 
 // Barre de filtres par famille (chips défilables horizontalement).
@@ -29,7 +36,7 @@ export default function FamilyFilter({
   total: number;
   onSelect: (name: string | null) => void;
 }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
 
   if (families.length === 0) return null;
 
@@ -51,7 +58,8 @@ export default function FamilyFilter({
           onClick={() => onSelect(fam.name)}
           className={chip(selected === fam.name)}
         >
-          {pluralize(fam.name)} <span className="opacity-70">{fam.count}</span>
+          {familyLabel(fam.name, lang)}{" "}
+          <span className="opacity-70">{fam.count}</span>
         </button>
       ))}
     </div>

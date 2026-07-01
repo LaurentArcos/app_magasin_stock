@@ -208,6 +208,24 @@ export async function sendFields(
   return data.record;
 }
 
+export async function createProduct(
+  fields: Record<string, unknown>,
+  adminCode: string | null
+): Promise<AirtableRecord> {
+  const res = await fetch("/api/products", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(adminCode ? { "x-admin-code": adminCode } : {}),
+    },
+    body: JSON.stringify({ fields }),
+  });
+  if (!res.ok) throw new Error("create failed");
+  const data = (await res.json()) as { record: AirtableRecord };
+  await upsertCachedProduct(data.record);
+  return data.record;
+}
+
 export async function sendPhoto(
   recordId: string,
   payload: { file: string; contentType: string; filename: string }

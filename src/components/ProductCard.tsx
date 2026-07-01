@@ -11,34 +11,9 @@ import {
   getCachedProduct,
   sendFields,
 } from "@/lib/store";
+import { EDITABLE, initValue, toTyped, typeOf } from "@/lib/fields";
+import { translateProduct } from "@/lib/productNames";
 import type { AirtableRecord, ProductFields } from "@/lib/types";
-
-type EditType = "text" | "number" | "currency" | "longtext" | "date";
-
-// Tous les champs modifiables (nom de colonne Airtable + type de saisie).
-const EDITABLE: { key: keyof ProductFields; type: EditType }[] = [
-  { key: "Quantité", type: "number" },
-  { key: "Prix Unitaire", type: "currency" },
-  { key: "Produit", type: "text" },
-  { key: "Produit1", type: "text" },
-  { key: "Produit2", type: "text" },
-  { key: "Référence", type: "text" },
-  { key: "Fournisseur", type: "text" },
-  { key: "Chez qui", type: "text" },
-  { key: "Taille", type: "number" },
-  { key: "Taille maille", type: "text" },
-  { key: "Couleur maille", type: "text" },
-  { key: "Couleur ruban", type: "text" },
-  { key: "Couleur curseur", type: "text" },
-  { key: "Couleur tirette", type: "text" },
-  { key: "Tirette/Curseur", type: "text" },
-  { key: "Double curseur ?", type: "text" },
-  { key: "Close ou openend", type: "text" },
-  { key: "Coated", type: "text" },
-  { key: "Reverse ?", type: "text" },
-  { key: "date d'arrivée", type: "date" },
-  { key: "Commentaire", type: "longtext" },
-];
 
 // Ordre d'affichage de la grille détaillée (hors Quantité / Prix / Commentaire,
 // qui ont leur propre zone). Les 3 derniers sont calculés = lecture seule.
@@ -96,10 +71,6 @@ function formatDate(v: unknown, lang: string): string {
   });
 }
 
-function typeOf(key: keyof ProductFields): EditType | undefined {
-  return EDITABLE.find((e) => e.key === key)?.type;
-}
-
 function formatValue(v: unknown): string {
   if (v === undefined || v === null || v === "") return "—";
   return String(v);
@@ -120,23 +91,6 @@ function formatPrice(v: unknown): string {
   }
   if (Number.isNaN(n)) return formatValue(v);
   return `${n.toFixed(2).replace(".", ",")} €`;
-}
-
-// Valeur initiale (chaîne) d'un champ pour le formulaire.
-function initValue(v: unknown, type: EditType): string {
-  if (v === undefined || v === null) return "";
-  if (type === "date") return String(v).slice(0, 10);
-  return String(v);
-}
-
-// Conversion chaîne -> valeur typée pour Airtable.
-function toTyped(value: string, type: EditType): unknown {
-  if (value === "") return null;
-  if (type === "number" || type === "currency") {
-    const n = Number(value);
-    return Number.isNaN(n) ? null : n;
-  }
-  return value;
 }
 
 export default function ProductCard({
@@ -168,7 +122,10 @@ export default function ProductCard({
   const setValue = (key: keyof ProductFields, val: string) =>
     setValues((prev) => ({ ...prev, [key as string]: val }));
 
-  const name = f.Produit || f.Produit1 || f["Référence"] || "—";
+  const name = translateProduct(
+    f.Produit || f.Produit1 || f["Référence"] || "—",
+    lang
+  );
   const photo = f.Photo && f.Photo.length > 0 ? f.Photo[0] : null;
   const photoUrl = photo?.thumbnails?.large?.url ?? photo?.url ?? null;
 
@@ -412,23 +369,36 @@ export default function ProductCard({
           })}
         </div>
 
-        {/* Commentaire (toujours affiché, éditable en admin) */}
+        {/* Commentaire Bertrand (toujours affiché, éditable en admin) */}
         <div className="border-t border-slate-100 p-4 sm:p-5">
           <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            {t("field_Commentaire")}
+            {t("field_Commentaire_Bertrand")}
           </h3>
           {isAdmin ? (
             <textarea
               rows={3}
-              value={values["Commentaire"] ?? ""}
-              onChange={(e) => setValue("Commentaire", e.target.value)}
+              value={values["Commentaire_Bertrand"] ?? ""}
+              onChange={(e) => setValue("Commentaire_Bertrand", e.target.value)}
               className={`${inputClass} resize-y`}
             />
           ) : (
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-              {f.Commentaire ? f.Commentaire : "—"}
+              {f.Commentaire_Bertrand ? f.Commentaire_Bertrand : "—"}
             </p>
           )}
+        </div>
+
+        {/* Commentaire Tunisie (toujours affiché, éditable par tous) */}
+        <div className="border-t border-slate-100 p-4 sm:p-5">
+          <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            {t("field_Commentaire_Tunisie")}
+          </h3>
+          <textarea
+            rows={3}
+            value={values["Commentaire_Tunisie"] ?? ""}
+            onChange={(e) => setValue("Commentaire_Tunisie", e.target.value)}
+            className={`${inputClass} resize-y`}
+          />
         </div>
       </div>
 

@@ -17,7 +17,8 @@ export interface ProductFields {
   "Chez qui"?: string;
   "Close ou openend"?: string;
   Coated?: string;
-  Commentaire?: string;
+  Commentaire_Bertrand?: string;
+  Commentaire_Tunisie?: string;
   "Couleur curseur"?: string;
   "Couleur maille"?: string;
   "Couleur ruban"?: string;

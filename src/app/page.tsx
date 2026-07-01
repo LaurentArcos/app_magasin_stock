@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useOffline } from "@/context/OfflineProvider";
+import { useAuth } from "@/context/AuthProvider";
 import LanguageToggle from "@/components/LanguageToggle";
 import AdminLogin from "@/components/AdminLogin";
 import SearchBar from "@/components/SearchBar";
 import FamilyFilter, { type Family } from "@/components/FamilyFilter";
 import ProductTiles from "@/components/ProductTiles";
 import ProductCard from "@/components/ProductCard";
+import ProductForm from "@/components/ProductForm";
 import SyncStatus from "@/components/SyncStatus";
 import { getCachedProducts } from "@/lib/store";
 import type { AirtableRecord } from "@/lib/types";
@@ -16,12 +18,14 @@ import type { AirtableRecord } from "@/lib/types";
 export default function Home() {
   const { t } = useI18n();
   const { lastSync } = useOffline();
+  const { isAdmin } = useAuth();
 
   const [all, setAll] = useState<AirtableRecord[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState("");
   const [family, setFamily] = useState<string | null>(null);
   const [selected, setSelected] = useState<AirtableRecord | null>(null);
+  const [creating, setCreating] = useState(false);
 
   // Charge les produits du cache local, et recharge après chaque synchro.
   useEffect(() => {
@@ -80,6 +84,15 @@ export default function Home() {
     setAll((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
   }
 
+  function handleCreated(created: AirtableRecord) {
+    setAll((prev) => {
+      const exists = prev.some((r) => r.id === created.id);
+      return exists
+        ? prev.map((r) => (r.id === created.id ? created : r))
+        : [created, ...prev];
+    });
+  }
+
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 border-b border-white/60 bg-white/70 backdrop-blur-md">
@@ -120,8 +133,34 @@ export default function Home() {
             onBack={() => setSelected(null)}
             onUpdated={handleUpdated}
           />
+        ) : creating && isAdmin ? (
+          <ProductForm
+            onBack={() => setCreating(false)}
+            onCreated={handleCreated}
+          />
         ) : (
           <>
+            {isAdmin && (
+              <button
+                onClick={() => setCreating(true)}
+                className="mb-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 font-semibold text-blue-700 transition hover:bg-blue-100 active:scale-[.99]"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-5"
+                >
+                  <path d="M12 5v14" />
+                  <path d="M5 12h14" />
+                </svg>
+                {t("add_product")}
+              </button>
+            )}
+
             <div className="mb-3">
               <SearchBar value={query} onChange={setQuery} />
             </div>

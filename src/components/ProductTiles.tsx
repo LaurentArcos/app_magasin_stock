@@ -1,6 +1,7 @@
 "use client";
 
 import { useI18n } from "@/i18n/I18nProvider";
+import { translateProduct } from "@/lib/productNames";
 import type { AirtableRecord } from "@/lib/types";
 
 function Tile({
@@ -10,9 +11,10 @@ function Tile({
   record: AirtableRecord;
   onSelect: (r: AirtableRecord) => void;
 }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const f = record.fields;
-  const name = f.Produit || f.Produit1 || f["Référence"] || "—";
+  const rawName = f.Produit || f.Produit1 || f["Référence"] || "—";
+  const name = translateProduct(rawName, lang);
 
   const photo = f.Photo && f.Photo.length > 0 ? f.Photo[0] : null;
   const thumb = photo?.thumbnails?.large?.url ?? photo?.url ?? null;

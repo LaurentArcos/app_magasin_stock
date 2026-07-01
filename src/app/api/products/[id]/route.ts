@@ -7,6 +7,9 @@ export const dynamic = "force-dynamic";
 // Champs calculés / non modifiables via l'API records.
 const READONLY_FIELDS = new Set(["Total", "Principal", "updated_at", "Photo"]);
 
+// Champs modifiables par tout le monde (sans code admin).
+const PUBLIC_FIELDS = new Set(["Quantité", "Commentaire_Tunisie"]);
+
 // GET /api/products/:id  -> fiche complète d'un produit
 export async function GET(
   _req: NextRequest,
@@ -50,8 +53,8 @@ export async function PATCH(
   for (const [key, value] of Object.entries(incoming)) {
     if (READONLY_FIELDS.has(key)) continue; // non modifiable
 
-    // Sans code admin : seule la quantité est autorisée.
-    if (!isAdmin && key !== "Quantité") {
+    // Sans code admin : seuls les champs publics sont autorisés.
+    if (!isAdmin && !PUBLIC_FIELDS.has(key)) {
       return NextResponse.json(
         { error: `Code administrateur requis pour modifier « ${key} »` },
         { status: 403 }

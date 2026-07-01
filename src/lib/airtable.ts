@@ -172,6 +172,26 @@ export async function replacePhoto(
   return current;
 }
 
+/** Crée un nouvel enregistrement. */
+export async function createProduct(
+  fields: Partial<ProductFields>
+): Promise<AirtableRecord> {
+  assertConfig();
+
+  const res = await fetch(tableUrl(), {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ fields, typecast: true }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Erreur Airtable (${res.status}): ${text}`);
+  }
+
+  return (await res.json()) as AirtableRecord;
+}
+
 /** Met à jour des champs d'un enregistrement. */
 export async function updateProduct(
   id: string,
