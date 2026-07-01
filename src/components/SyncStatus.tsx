@@ -74,7 +74,7 @@ export default function SyncStatus() {
 
         {online && !syncing && (
           <button
-            onClick={syncNow}
+            onClick={() => syncNow()}
             className="rounded-full px-2 py-0.5 font-medium text-brand-600 hover:bg-brand-50"
           >
             {t("sync_now")}
