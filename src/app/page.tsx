@@ -1,52 +1,87 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useOffline } from "@/context/OfflineProvider";
 import LanguageToggle from "@/components/LanguageToggle";
 import AdminLogin from "@/components/AdminLogin";
 import SearchBar from "@/components/SearchBar";
-import ResultList from "@/components/ResultList";
+import FamilyFilter, { type Family } from "@/components/FamilyFilter";
+import ProductTiles from "@/components/ProductTiles";
 import ProductCard from "@/components/ProductCard";
 import SyncStatus from "@/components/SyncStatus";
-import { searchProductsLocal } from "@/lib/store";
+import { getCachedProducts } from "@/lib/store";
 import type { AirtableRecord } from "@/lib/types";
 
 export default function Home() {
   const { t } = useI18n();
-  const { online } = useOffline();
-  const [results, setResults] = useState<AirtableRecord[] | null>(null);
-  const [selected, setSelected] = useState<AirtableRecord | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { lastSync } = useOffline();
 
-  // La recherche se fait toujours sur le cache local (fonctionne hors ligne).
-  async function search(q: string) {
-    if (!q) return;
-    setLoading(true);
-    setError(null);
-    setSelected(null);
-    try {
-      const records = await searchProductsLocal(q);
-      setResults(records);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "error");
-      setResults([]);
-    } finally {
-      setLoading(false);
+  const [all, setAll] = useState<AirtableRecord[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [query, setQuery] = useState("");
+  const [family, setFamily] = useState<string | null>(null);
+  const [selected, setSelected] = useState<AirtableRecord | null>(null);
+
+  // Charge les produits du cache local, et recharge après chaque synchro.
+  useEffect(() => {
+    let active = true;
+    getCachedProducts()
+      .then((records) => {
+        if (active) {
+          setAll(records);
+          setLoaded(true);
+        }
+      })
+      .catch(() => setLoaded(true));
+    return () => {
+      active = false;
+    };
+  }, [lastSync]);
+
+  // Familles (valeurs distinctes du champ Produit) avec compteur.
+  const families = useMemo<Family[]>(() => {
+    const m = new Map<string, number>();
+    for (const r of all) {
+      const k = (r.fields.Produit ?? "").trim();
+      if (!k) continue;
+      m.set(k, (m.get(k) ?? 0) + 1);
     }
-  }
+    return [...m.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  }, [all]);
+
+  // Produits filtrés (famille + recherche texte).
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return all.filter((r) => {
+      const f = r.fields;
+      if (family && (f.Produit ?? "").trim() !== family) return false;
+      if (q) {
+        const hay = [
+          f.Produit,
+          f.Produit1,
+          f.Produit2,
+          f["Référence"],
+          f.Fournisseur,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [all, family, query]);
 
   function handleUpdated(updated: AirtableRecord) {
     setSelected(updated);
-    setResults((prev) =>
-      prev ? prev.map((r) => (r.id === updated.id ? updated : r)) : prev
-    );
+    setAll((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
   }
 
   return (
     <div className="min-h-screen">
-      {/* Header collant */}
       <header className="sticky top-0 z-20 border-b border-white/60 bg-white/70 backdrop-blur-md">
         <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-2 px-4 py-3">
           <div className="flex items-center gap-2">
@@ -79,52 +114,42 @@ export default function Home() {
       <main className="mx-auto max-w-3xl px-4 pb-24 pt-4">
         <SyncStatus />
 
-        {/* Barre de recherche */}
-        <div className="mb-5">
-          <SearchBar onSearch={search} loading={loading} />
-        </div>
-
-        {error && (
-          <p className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </p>
-        )}
-
         {selected ? (
           <ProductCard
             record={selected}
             onBack={() => setSelected(null)}
             onUpdated={handleUpdated}
           />
-        ) : results !== null ? (
-          <ResultList records={results} onSelect={setSelected} />
         ) : (
-          <EmptyState online={online} />
+          <>
+            <div className="mb-3">
+              <SearchBar value={query} onChange={setQuery} />
+            </div>
+
+            <div className="mb-4">
+              <FamilyFilter
+                families={families}
+                selected={family}
+                total={all.length}
+                onSelect={setFamily}
+              />
+            </div>
+
+            {!loaded ? (
+              <p className="py-10 text-center text-sm text-slate-400">
+                {t("loading_products")}
+              </p>
+            ) : (
+              <>
+                <p className="mb-2 px-1 text-center text-sm text-slate-500">
+                  {filtered.length} {t("results_count")}
+                </p>
+                <ProductTiles records={filtered} onSelect={setSelected} />
+              </>
+            )}
+          </>
         )}
       </main>
-    </div>
-  );
-}
-
-function EmptyState({ online }: { online: boolean }) {
-  const { t } = useI18n();
-  return (
-    <div className="mt-10 flex flex-col items-center gap-3 text-center text-slate-400">
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="h-12 w-12"
-      >
-        <circle cx="11" cy="11" r="8" />
-        <path d="m21 21-4.3-4.3" />
-      </svg>
-      <p className="max-w-xs text-sm">
-        {online ? t("search_placeholder") : t("offline_banner")}
-      </p>
     </div>
   );
 }
