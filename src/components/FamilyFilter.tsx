@@ -1,30 +1,15 @@
 "use client";
 
 import { useI18n } from "@/i18n/I18nProvider";
-import { translateProduct } from "@/lib/productNames";
+import { familyLabel } from "@/lib/productFamily";
 
 export interface Family {
-  name: string;
+  id: string; // identifiant canonique de la famille (ex: "zip")
+  label: string; // libellé français au singulier (ex: "Zip")
   count: number;
 }
 
-// Pluriel d'affichage (français) : on pluralise le mot principal (le premier),
-// sauf s'il se termine déjà par s, x ou z. Ex: "Bouton à coudre" -> "Boutons à coudre".
-function pluralize(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 0) return name;
-  const head = parts[0];
-  if (!/[sxz]$/i.test(head)) parts[0] = head + "s";
-  return parts.join(" ");
-}
-
-// Libellé d'une famille : arabe traduit si dispo, sinon pluriel français.
-function familyLabel(name: string, lang: string): string {
-  if (lang === "ar") return translateProduct(name, "ar");
-  return pluralize(name);
-}
-
-// Barre de filtres par famille (chips défilables horizontalement).
+// Barre de filtres par famille de produit (chips défilables horizontalement).
 export default function FamilyFilter({
   families,
   selected,
@@ -34,7 +19,7 @@ export default function FamilyFilter({
   families: Family[];
   selected: string | null;
   total: number;
-  onSelect: (name: string | null) => void;
+  onSelect: (id: string | null) => void;
 }) {
   const { t, lang } = useI18n();
 
@@ -54,11 +39,11 @@ export default function FamilyFilter({
       </button>
       {families.map((fam) => (
         <button
-          key={fam.name}
-          onClick={() => onSelect(fam.name)}
-          className={chip(selected === fam.name)}
+          key={fam.id}
+          onClick={() => onSelect(fam.id)}
+          className={chip(selected === fam.id)}
         >
-          {familyLabel(fam.name, lang)}{" "}
+          {familyLabel(fam.id, fam.label, lang)}{" "}
           <span className="opacity-70">{fam.count}</span>
         </button>
       ))}
